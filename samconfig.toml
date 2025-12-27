@@ -1,0 +1,38 @@
+# Herald SAM CLI Configuration
+# https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-config.html
+
+version = 0.1
+
+[default.global.parameters]
+stack_name = "herald-dev"
+
+[default.build.parameters]
+cached = true
+parallel = true
+use_container = false
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+stack_name = "herald-dev"
+s3_prefix = "herald-dev"
+region = "us-east-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_NAMED_IAM"
+image_repositories = []
+parameter_overrides = "Environment=\"dev\""
+disable_rollback = true
+
+[default.sync.parameters]
+watch = true
+
+# Production environment
+[prod.deploy.parameters]
+stack_name = "herald-prod"
+s3_prefix = "herald-prod"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_NAMED_IAM"
+parameter_overrides = "Environment=\"prod\" AuroraMinCapacity=\"0.5\" AuroraMaxCapacity=\"8\""
+disable_rollback = false

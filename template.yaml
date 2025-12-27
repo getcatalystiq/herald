@@ -1,0 +1,1065 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Herald - MCP Server for S3 File Publishing
+  OAuth 2.1 with PKCE, Streamable HTTP transport, S3 file uploads
+
+Globals:
+  Function:
+    Timeout: 120
+    MemorySize: 1024
+    Architectures:
+      - arm64
+    Environment:
+      Variables:
+        LOG_LEVEL: INFO
+        ENVIRONMENT: !Ref Environment
+        AURORA_SECRET_ARN: !Ref AuroraSecret
+        AURORA_CLUSTER_ARN: !GetAtt AuroraCluster.DBClusterArn
+        AURORA_DATABASE: herald
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+  AuroraMinCapacity:
+    Type: Number
+    Default: 0.5
+    Description: Minimum ACUs for Aurora Serverless v2
+
+  AuroraMaxCapacity:
+    Type: Number
+    Default: 4
+    Description: Maximum ACUs for Aurora Serverless v2
+
+  VpcCidr:
+    Type: String
+    Default: 10.0.0.0/16
+
+Resources:
+  #############################################################################
+  # VPC for Aurora
+  #############################################################################
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-vpc
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Select [0, !Cidr [!Ref VpcCidr, 4, 8]]
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-private-1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Select [1, !Cidr [!Ref VpcCidr, 4, 8]]
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-private-2
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Select [2, !Cidr [!Ref VpcCidr, 4, 8]]
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-public
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-igw
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  NatSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for NAT instance
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          CidrIp: !Ref VpcCidr
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-nat-sg
+
+  NatInstanceV4:
+    Type: AWS::EC2::Instance
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      InstanceType: t4g.nano
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64}}'
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref NatSecurityGroup
+      IamInstanceProfile: !Ref BastionInstanceProfile
+      SourceDestCheck: false
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          exec > /var/log/nat-setup.log 2>&1
+          set -ex
+          echo 1 > /proc/sys/net/ipv4/ip_forward
+          sysctl -w net.ipv4.ip_forward=1
+          yum install -y iptables-services
+          systemctl enable iptables
+          systemctl start iptables
+          iptables -F
+          iptables -t nat -F
+          iptables -P INPUT ACCEPT
+          iptables -P FORWARD ACCEPT
+          iptables -P OUTPUT ACCEPT
+          iptables -t nat -A POSTROUTING -s 10.0.0.0/16 ! -d 10.0.0.0/16 -j MASQUERADE
+          service iptables save
+          echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
+          echo "NAT setup complete at $(date)"
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-nat
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-public-rt
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-private-rt
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      InstanceId: !Ref NatInstanceV4
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for Herald Aurora
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-db-subnet-group
+
+  #############################################################################
+  # Security Groups
+  #############################################################################
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Herald Lambda functions
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-lambda-sg
+
+  AuroraSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Herald Aurora cluster
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-aurora-sg
+
+  AuroraSecurityGroupLambdaIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref AuroraSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref LambdaSecurityGroup
+
+  AuroraSecurityGroupBastionIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref AuroraSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref BastionSecurityGroup
+
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Bastion host
+      GroupName: !Sub herald-${Environment}-bastion-sg
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          DestinationSecurityGroupId: !Ref AuroraSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-bastion-sg
+
+  BastionSecurityGroupSelfIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref BastionSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref BastionSecurityGroup
+
+  #############################################################################
+  # VPC Endpoints
+  #############################################################################
+  SecretsManagerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.secretsmanager
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref LambdaSecurityGroup
+      PrivateDnsEnabled: true
+
+  SSMEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      PrivateDnsEnabled: true
+
+  SSMMessagesEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssmmessages
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      PrivateDnsEnabled: true
+
+  EC2MessagesEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ec2messages
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      PrivateDnsEnabled: true
+
+  RdsDataEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.rds-data
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref LambdaSecurityGroup
+      PrivateDnsEnabled: true
+
+  #############################################################################
+  # Bastion Host
+  #############################################################################
+  BastionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub herald-${Environment}-bastion-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-bastion-role
+
+  BastionInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub herald-${Environment}-bastion-profile
+      Roles:
+        - !Ref BastionRole
+
+  BastionInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t4g.micro
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64}}'
+      SubnetId: !Ref PrivateSubnet1
+      IamInstanceProfile: !Ref BastionInstanceProfile
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-bastion
+
+  #############################################################################
+  # Aurora Serverless v2
+  #############################################################################
+  AuroraSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub herald-${Environment}-aurora-credentials
+      Description: Aurora credentials for Herald
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "herald_admin"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\'
+
+  AuroraCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      DBClusterIdentifier: !Sub herald-${Environment}-cluster
+      Engine: aurora-postgresql
+      EngineVersion: '16.4'
+      DatabaseName: herald
+      MasterUsername: !Sub '{{resolve:secretsmanager:${AuroraSecret}:SecretString:username}}'
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${AuroraSecret}:SecretString:password}}'
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: !Ref AuroraMinCapacity
+        MaxCapacity: !Ref AuroraMaxCapacity
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref AuroraSecurityGroup
+      EnableHttpEndpoint: true
+      StorageEncrypted: true
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-cluster
+
+  AuroraInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub herald-${Environment}-instance-1
+      DBClusterIdentifier: !Ref AuroraCluster
+      DBInstanceClass: db.serverless
+      Engine: aurora-postgresql
+      PubliclyAccessible: false
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-instance-1
+
+  AuroraSecretAttachment:
+    Type: AWS::SecretsManager::SecretTargetAttachment
+    Properties:
+      SecretId: !Ref AuroraSecret
+      TargetId: !Ref AuroraCluster
+      TargetType: AWS::RDS::DBCluster
+
+  #############################################################################
+  # API Gateway
+  #############################################################################
+  ApiGateway:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      DisableExecuteApiEndpoint: false
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - Mcp-Session-Id
+        ExposeHeaders:
+          - Mcp-Session-Id
+
+  #############################################################################
+  # Lambda Functions
+  #############################################################################
+
+  # OAuth Server Function
+  OAuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageConfig:
+        Command:
+          - oauth.server.handler
+      Description: OAuth 2.1 server (DCR, authorize, token, metadata)
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource:
+                - !Ref AuroraSecret
+            - Effect: Allow
+              Action:
+                - rds-data:ExecuteStatement
+                - rds-data:BatchExecuteStatement
+              Resource: !GetAtt AuroraCluster.DBClusterArn
+      Events:
+        OAuthMetadata:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /.well-known/oauth-authorization-server
+            Method: GET
+        OAuthProtectedResource:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /.well-known/oauth-protected-resource
+            Method: GET
+        OAuthRegister:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /oauth/register
+            Method: POST
+        OAuthAuthorize:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /oauth/authorize
+            Method: GET
+        OAuthAuthorizePost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /oauth/authorize
+            Method: POST
+        OAuthToken:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /oauth/token
+            Method: POST
+        AuthorizeGet:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /authorize
+            Method: GET
+        AuthorizePost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /authorize
+            Method: POST
+        Token:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /token
+            Method: POST
+        OAuthUserInfo:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /oauth/userinfo
+            Method: GET
+        TenantSignup:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /signup
+            Method: POST
+        TenantLogin:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /login
+            Method: POST
+    Metadata:
+      DockerContext: .
+      Dockerfile: Dockerfile
+      DockerTag: !Ref Environment
+
+  # Tenant Admin Function
+  TenantAdminFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageConfig:
+        Command:
+          - admin.tenant.handler
+      Description: Tenant admin API (OAuth authenticated)
+      Timeout: 300
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - "*"
+          AllowMethods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+          AllowHeaders:
+            - Content-Type
+            - Authorization
+          MaxAge: 86400
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+                - secretsmanager:CreateSecret
+                - secretsmanager:PutSecretValue
+                - secretsmanager:DescribeSecret
+                - secretsmanager:DeleteSecret
+              Resource:
+                - !Ref AuroraSecret
+                - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:herald-${Environment}-bucket-*
+            - Effect: Allow
+              Action:
+                - rds-data:ExecuteStatement
+                - rds-data:BatchExecuteStatement
+              Resource: !GetAtt AuroraCluster.DBClusterArn
+      Events:
+        # Bucket management
+        AdminListBuckets:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/buckets
+            Method: GET
+        AdminGetBucket:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/buckets/{bucket_id}
+            Method: GET
+        AdminCreateBucket:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/buckets
+            Method: POST
+        AdminUpdateBucket:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/buckets/{bucket_id}
+            Method: PUT
+        AdminDeleteBucket:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/buckets/{bucket_id}
+            Method: DELETE
+        AdminListBucketFiles:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/buckets/{bucket_id}/files
+            Method: GET
+        # Access grants
+        AdminListAccessGrants:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/buckets/{bucket_id}/access
+            Method: GET
+        AdminCreateAccessGrant:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/buckets/{bucket_id}/access
+            Method: POST
+        AdminDeleteAccessGrant:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/buckets/{bucket_id}/access/{grant_id}
+            Method: DELETE
+        # User management
+        AdminListUsers:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/users
+            Method: GET
+        AdminCreateUser:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/users
+            Method: POST
+        AdminUpdateUser:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/users/{user_id}
+            Method: PUT
+        AdminDeleteUser:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/users/{user_id}
+            Method: DELETE
+        # Upload history
+        AdminListUploads:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/uploads
+            Method: GET
+        # Stats
+        AdminGetStats:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /api/admin/stats
+            Method: GET
+    Metadata:
+      DockerContext: .
+      Dockerfile: Dockerfile
+      DockerTag: !Ref Environment
+
+  # MCP Server Function
+  McpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageConfig:
+        Command:
+          - mcp.server.handler
+      Description: MCP server for S3 file publishing
+      MemorySize: 1024
+      Timeout: 300
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource:
+                - !Ref AuroraSecret
+                - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:herald-${Environment}-bucket-*
+            - Effect: Allow
+              Action:
+                - rds-data:ExecuteStatement
+                - rds-data:BatchExecuteStatement
+              Resource: !GetAtt AuroraCluster.DBClusterArn
+            # S3 permissions for file publishing
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+                - s3:DeleteObject
+                - s3:ListBucket
+              Resource: '*'
+            # STS for cross-account bucket access
+            - Effect: Allow
+              Action:
+                - sts:AssumeRole
+              Resource: '*'
+      Events:
+        McpEndpoint:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /mcp
+            Method: POST
+        McpSession:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ApiGateway
+            Path: /mcp
+            Method: GET
+    Metadata:
+      DockerContext: .
+      Dockerfile: Dockerfile
+      DockerTag: !Ref Environment
+
+  # Database Migration Function
+  MigrationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageConfig:
+        Command:
+          - migrate.handler
+      Description: Database migration runner
+      Timeout: 300
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource:
+                - !Ref AuroraSecret
+            - Effect: Allow
+              Action:
+                - rds-data:ExecuteStatement
+                - rds-data:BatchExecuteStatement
+              Resource: !GetAtt AuroraCluster.DBClusterArn
+    Metadata:
+      DockerContext: .
+      Dockerfile: Dockerfile
+      DockerTag: !Ref Environment
+
+  #############################################################################
+  # Platform Admin API (IAM Authentication)
+  #############################################################################
+  PlatformAdminApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub herald-${Environment}-platform-admin
+      StageName: !Ref Environment
+      Auth:
+        DefaultAuthorizer: AWS_IAM
+      Cors:
+        AllowOrigin: "'*'"
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Amz-Security-Token'"
+
+  PlatformAdminFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageConfig:
+        Command:
+          - admin.platform.handler
+      Description: Platform admin API (IAM authenticated)
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+                - secretsmanager:CreateSecret
+                - secretsmanager:UpdateSecret
+                - secretsmanager:DeleteSecret
+              Resource:
+                - !Ref AuroraSecret
+                - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:herald-${Environment}-*
+            - Effect: Allow
+              Action:
+                - rds-data:ExecuteStatement
+                - rds-data:BatchExecuteStatement
+              Resource: !GetAtt AuroraCluster.DBClusterArn
+      Events:
+        ListTenants:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PlatformAdminApi
+            Path: /tenants
+            Method: GET
+        GetTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PlatformAdminApi
+            Path: /tenants/{tenant_id}
+            Method: GET
+        CreateTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PlatformAdminApi
+            Path: /tenants
+            Method: POST
+        UpdateTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PlatformAdminApi
+            Path: /tenants/{tenant_id}
+            Method: PUT
+        DeleteTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PlatformAdminApi
+            Path: /tenants/{tenant_id}
+            Method: DELETE
+        GetMetrics:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PlatformAdminApi
+            Path: /metrics
+            Method: GET
+    Metadata:
+      DockerContext: .
+      Dockerfile: Dockerfile
+      DockerTag: !Ref Environment
+
+  #############################################################################
+  # Admin UI - S3 + CloudFront
+  #############################################################################
+  AdminUIBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub herald-${Environment}-admin-ui-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-admin-ui
+
+  AdminUIBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AdminUIBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub ${AdminUIBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${AdminUIDistribution}
+
+  AdminUIOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub herald-${Environment}-admin-ui-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  AdminUIDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub Herald Admin UI - ${Environment}
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt AdminUIBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+            OriginAccessControlId: !Ref AdminUIOAC
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          ResponseHeadersPolicyId: 5cc3b908-e619-4b99-88e5-2cf7f45965bd
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+      Tags:
+        - Key: Name
+          Value: !Sub herald-${Environment}-admin-ui
+
+#############################################################################
+# Outputs
+#############################################################################
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com"
+    Export:
+      Name: !Sub herald-${Environment}-api-endpoint
+
+  McpServerUrl:
+    Description: MCP Server URL for Claude
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/mcp"
+    Export:
+      Name: !Sub herald-${Environment}-mcp-url
+
+  OAuthMetadataUrl:
+    Description: OAuth Authorization Server Metadata URL
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/.well-known/oauth-authorization-server"
+    Export:
+      Name: !Sub herald-${Environment}-oauth-metadata
+
+  AuroraClusterArn:
+    Description: Aurora cluster ARN
+    Value: !GetAtt AuroraCluster.DBClusterArn
+    Export:
+      Name: !Sub herald-${Environment}-aurora-arn
+
+  AuroraSecretArn:
+    Description: Aurora credentials secret ARN
+    Value: !Ref AuroraSecret
+    Export:
+      Name: !Sub herald-${Environment}-aurora-secret
+
+  PlatformAdminApiUrl:
+    Description: Platform Admin API URL (IAM authenticated)
+    Value: !Sub "https://${PlatformAdminApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+    Export:
+      Name: !Sub herald-${Environment}-platform-admin-api
+
+  AdminUIBucketName:
+    Description: S3 bucket for Admin UI static files
+    Value: !Ref AdminUIBucket
+    Export:
+      Name: !Sub herald-${Environment}-admin-ui-bucket
+
+  AdminUIDistributionId:
+    Description: CloudFront distribution ID for Admin UI
+    Value: !Ref AdminUIDistribution
+    Export:
+      Name: !Sub herald-${Environment}-admin-ui-distribution-id
+
+  AdminUIUrl:
+    Description: Admin UI URL (CloudFront)
+    Value: !Sub "https://${AdminUIDistribution.DomainName}"
+    Export:
+      Name: !Sub herald-${Environment}-admin-ui-url
+
+  BastionInstanceId:
+    Description: Bastion instance ID for SSM database tunnel
+    Value: !Ref BastionInstance
+    Export:
+      Name: !Sub herald-${Environment}-bastion-id
+
+  AuroraClusterEndpoint:
+    Description: Aurora cluster endpoint for database connections
+    Value: !GetAtt AuroraCluster.Endpoint.Address
+    Export:
+      Name: !Sub herald-${Environment}-aurora-endpoint
+
+  TenantAdminFunctionUrl:
+    Description: Lambda Function URL for Tenant Admin
+    Value: !GetAtt TenantAdminFunctionUrl.FunctionUrl
+    Export:
+      Name: !Sub herald-${Environment}-tenant-admin-function-url
