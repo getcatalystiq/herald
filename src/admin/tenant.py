@@ -130,7 +130,7 @@ def handler(event: dict, context: Any) -> dict:
         if path == "/api/admin/buckets" and http_method == "GET":
             return _list_buckets(tenant_id)
         elif path == "/api/admin/buckets" and http_method == "POST":
-            return _create_bucket(tenant_id, body_params)
+            return _create_bucket(tenant_id, user_id, body_params)
         elif "/buckets/" in path and "/files" in path and http_method == "GET":
             bucket_id = path_params.get("bucket_id")
             query_params = event.get("queryStringParameters", {}) or {}
@@ -210,7 +210,7 @@ def _list_buckets(tenant_id: str) -> dict:
         """
         SELECT id, name, bucket_name, bucket_region, prefix, is_default, enabled, settings, created_at
         FROM tenant_buckets
-        WHERE tenant_id = :tenant_id
+        WHERE tenant_id = :tenant_id::uuid
         ORDER BY created_at DESC
         """,
         [param("tenant_id", tenant_id)]
@@ -236,9 +236,9 @@ def _get_bucket(tenant_id: str, bucket_id: str) -> dict:
     db = get_aurora_client()
     result = db.execute(
         """
-        SELECT id, name, bucket_name, bucket_region, prefix, is_default, enabled, settings, created_at
+        SELECT id, name, bucket_name, bucket_region, prefix, is_default, enabled, settings, created_at, public_url_base
         FROM tenant_buckets
-        WHERE id = :bucket_id AND tenant_id = :tenant_id
+        WHERE id = :bucket_id::uuid AND tenant_id = :tenant_id::uuid
         """,
         [param("bucket_id", bucket_id), param("tenant_id", tenant_id)]
     )
@@ -255,16 +255,20 @@ def _get_bucket(tenant_id: str, bucket_id: str) -> dict:
         "enabled": row[6].get("booleanValue", True),
         "settings": json.loads(row[7].get("stringValue", "{}")),
         "created_at": row[8].get("stringValue"),
+        "public_url_base": row[9].get("stringValue"),
     }
     return _json_response({"bucket": bucket})
 
 
-def _create_bucket(tenant_id: str, data: dict) -> dict:
-    """Create a new S3 bucket configuration."""
+def _create_bucket(tenant_id: str, user_id: str, data: dict) -> dict:
+    """Create a new S3 bucket configuration and grant access to the creator."""
     name = data.get("name")
     bucket_name = data.get("bucket_name")
+    public_url_base = data.get("public_url_base")
     if not name or not bucket_name:
         return _error_response(400, "name and bucket_name are required")
+    if not public_url_base:
+        return _error_response(400, "public_url_base is required. Enable S3 website hosting or set up CloudFront for your bucket.")
 
     bucket_region = data.get("bucket_region", "us-east-1")
     prefix = data.get("prefix", "")
@@ -282,14 +286,14 @@ def _create_bucket(tenant_id: str, data: dict) -> dict:
     # If setting as default, unset other defaults
     if is_default:
         db.execute(
-            "UPDATE tenant_buckets SET is_default = false WHERE tenant_id = :tenant_id",
+            "UPDATE tenant_buckets SET is_default = false WHERE tenant_id = :tenant_id::uuid",
             [param("tenant_id", tenant_id)]
         )
 
     result = db.execute(
         """
-        INSERT INTO tenant_buckets (tenant_id, name, bucket_name, bucket_region, prefix, credentials_secret_arn, is_default, settings)
-        VALUES (:tenant_id, :name, :bucket_name, :bucket_region, :prefix, :credentials_arn, :is_default, :settings::jsonb)
+        INSERT INTO tenant_buckets (tenant_id, name, bucket_name, bucket_region, prefix, credentials_secret_arn, is_default, settings, public_url_base)
+        VALUES (:tenant_id::uuid, :name, :bucket_name, :bucket_region, :prefix, :credentials_arn, :is_default, :settings::jsonb, :public_url_base)
         RETURNING id
         """,
         [
@@ -301,9 +305,20 @@ def _create_bucket(tenant_id: str, data: dict) -> dict:
             param("credentials_arn", credentials_arn),
             param("is_default", is_default),
             param("settings", settings),
+            param("public_url_base", public_url_base),
         ]
     )
     bucket_id = result["records"][0][0].get("stringValue")
+
+    # Grant full access to the creator
+    db.execute(
+        """
+        INSERT INTO bucket_access_grants (tenant_id, user_id, bucket_id, permissions)
+        VALUES (:tenant_id::uuid, :user_id::uuid, :bucket_id::uuid, ARRAY['read', 'write', 'delete'])
+        """,
+        [param("tenant_id", tenant_id), param("user_id", user_id), param("bucket_id", bucket_id)]
+    )
+
     return _json_response({"id": bucket_id, "message": "Bucket created"}, 201)
 
 
@@ -313,7 +328,7 @@ def _update_bucket(tenant_id: str, bucket_id: str, data: dict) -> dict:
 
     # Check bucket exists
     check = db.execute(
-        "SELECT id FROM tenant_buckets WHERE id = :bucket_id AND tenant_id = :tenant_id",
+        "SELECT id FROM tenant_buckets WHERE id = :bucket_id::uuid AND tenant_id = :tenant_id::uuid",
         [param("bucket_id", bucket_id), param("tenant_id", tenant_id)]
     )
     if not check.get("records"):
@@ -333,19 +348,22 @@ def _update_bucket(tenant_id: str, bucket_id: str, data: dict) -> dict:
         params.append(param("enabled", data["enabled"]))
     if "is_default" in data and data["is_default"]:
         db.execute(
-            "UPDATE tenant_buckets SET is_default = false WHERE tenant_id = :tenant_id",
+            "UPDATE tenant_buckets SET is_default = false WHERE tenant_id = :tenant_id::uuid",
             [param("tenant_id", tenant_id)]
         )
         updates.append("is_default = true")
     if "settings" in data:
         updates.append("settings = :settings::jsonb")
         params.append(param("settings", json.dumps(data["settings"])))
+    if "public_url_base" in data:
+        updates.append("public_url_base = :public_url_base")
+        params.append(param("public_url_base", data["public_url_base"]))
 
     updates.append("updated_at = NOW()")
 
     if updates:
         db.execute(
-            f"UPDATE tenant_buckets SET {', '.join(updates)} WHERE id = :bucket_id AND tenant_id = :tenant_id",
+            f"UPDATE tenant_buckets SET {', '.join(updates)} WHERE id = :bucket_id::uuid AND tenant_id = :tenant_id::uuid",
             params
         )
 
@@ -358,7 +376,7 @@ def _delete_bucket(tenant_id: str, bucket_id: str) -> dict:
 
     # Get credentials ARN first
     result = db.execute(
-        "SELECT credentials_secret_arn FROM tenant_buckets WHERE id = :bucket_id AND tenant_id = :tenant_id",
+        "SELECT credentials_secret_arn FROM tenant_buckets WHERE id = :bucket_id::uuid AND tenant_id = :tenant_id::uuid",
         [param("bucket_id", bucket_id), param("tenant_id", tenant_id)]
     )
     if not result.get("records"):
@@ -372,17 +390,44 @@ def _delete_bucket(tenant_id: str, bucket_id: str) -> dict:
 
     # Delete bucket (cascades to access grants and uploads via FK)
     db.execute(
-        "DELETE FROM tenant_buckets WHERE id = :bucket_id AND tenant_id = :tenant_id",
+        "DELETE FROM tenant_buckets WHERE id = :bucket_id::uuid AND tenant_id = :tenant_id::uuid",
         [param("bucket_id", bucket_id), param("tenant_id", tenant_id)]
     )
     return _json_response({"message": "Bucket deleted"})
 
 
 def _list_bucket_files(tenant_id: str, bucket_id: str, query_params: dict) -> dict:
-    """List files in a bucket (via S3)."""
-    # This would use S3 client to list files
-    # For now, return empty list - actual implementation would use boto3
-    return _json_response({"files": []})
+    """List files in a bucket from the file_uploads table."""
+    db = get_aurora_client()
+
+    prefix = query_params.get("prefix", "") if query_params else ""
+
+    # Query file uploads for this bucket
+    result = db.execute(
+        """
+        SELECT file_key, file_name, file_size, created_at
+        FROM file_uploads
+        WHERE bucket_id = :bucket_id::uuid AND tenant_id = :tenant_id::uuid
+        ORDER BY created_at DESC
+        LIMIT 100
+        """,
+        [param("bucket_id", bucket_id), param("tenant_id", tenant_id)]
+    )
+
+    files = []
+    for row in result.get("records", []):
+        file_key = row[0].get("stringValue", "")
+        # Filter by prefix if provided
+        if prefix and not file_key.startswith(prefix):
+            continue
+        files.append({
+            "key": file_key,
+            "name": row[1].get("stringValue", ""),
+            "size": row[2].get("longValue", 0),
+            "last_modified": row[3].get("stringValue", ""),
+        })
+
+    return _json_response({"files": files})
 
 
 # =============================================================================
@@ -397,7 +442,7 @@ def _list_access_grants(tenant_id: str, bucket_id: str) -> dict:
         SELECT g.id, g.user_id, u.email, g.permissions, g.prefix_restriction, g.expires_at, g.created_at
         FROM bucket_access_grants g
         JOIN users u ON u.id = g.user_id
-        WHERE g.bucket_id = :bucket_id AND g.tenant_id = :tenant_id
+        WHERE g.bucket_id = :bucket_id::uuid AND g.tenant_id = :tenant_id::uuid
         ORDER BY g.created_at DESC
         """,
         [param("bucket_id", bucket_id), param("tenant_id", tenant_id)]
@@ -427,7 +472,7 @@ def _create_access_grant(tenant_id: str, bucket_id: str, data: dict, created_by:
 
     # Check bucket exists
     check = db.execute(
-        "SELECT id FROM tenant_buckets WHERE id = :bucket_id AND tenant_id = :tenant_id",
+        "SELECT id FROM tenant_buckets WHERE id = :bucket_id::uuid AND tenant_id = :tenant_id::uuid",
         [param("bucket_id", bucket_id), param("tenant_id", tenant_id)]
     )
     if not check.get("records"):
@@ -438,7 +483,7 @@ def _create_access_grant(tenant_id: str, bucket_id: str, data: dict, created_by:
     result = db.execute(
         """
         INSERT INTO bucket_access_grants (tenant_id, bucket_id, user_id, permissions, prefix_restriction, expires_at, created_by)
-        VALUES (:tenant_id, :bucket_id, :user_id, :permissions::text[], :prefix_restriction, :expires_at, :created_by)
+        VALUES (:tenant_id::uuid, :bucket_id::uuid, :user_id::uuid, :permissions::text[], :prefix_restriction, :expires_at, :created_by::uuid)
         ON CONFLICT (bucket_id, user_id) DO UPDATE SET permissions = EXCLUDED.permissions, prefix_restriction = EXCLUDED.prefix_restriction
         RETURNING id
         """,
@@ -460,7 +505,7 @@ def _delete_access_grant(tenant_id: str, bucket_id: str, grant_id: str) -> dict:
     """Delete an access grant."""
     db = get_aurora_client()
     db.execute(
-        "DELETE FROM bucket_access_grants WHERE id = :grant_id AND bucket_id = :bucket_id AND tenant_id = :tenant_id",
+        "DELETE FROM bucket_access_grants WHERE id = :grant_id::uuid AND bucket_id = :bucket_id::uuid AND tenant_id = :tenant_id::uuid",
         [param("grant_id", grant_id), param("bucket_id", bucket_id), param("tenant_id", tenant_id)]
     )
     return _json_response({"message": "Access grant deleted"})
@@ -477,7 +522,7 @@ def _list_users(tenant_id: str) -> dict:
         """
         SELECT id, email, name, role, scopes, is_active, last_login_at, created_at
         FROM users
-        WHERE tenant_id = :tenant_id
+        WHERE tenant_id = :tenant_id::uuid
         ORDER BY created_at DESC
         """,
         [param("tenant_id", tenant_id)]
@@ -519,7 +564,7 @@ def _create_user(tenant_id: str, data: dict) -> dict:
         result = db.execute(
             """
             INSERT INTO users (tenant_id, email, password_hash, name, role, scopes)
-            VALUES (:tenant_id, :email, :password_hash, :name, :role, :scopes::text[])
+            VALUES (:tenant_id::uuid, :email, :password_hash, :name, :role, :scopes::text[])
             RETURNING id
             """,
             [
@@ -562,7 +607,7 @@ def _update_user(tenant_id: str, user_id: str, data: dict) -> dict:
 
     if updates:
         db.execute(
-            f"UPDATE users SET {', '.join(updates)} WHERE id = :user_id AND tenant_id = :tenant_id",
+            f"UPDATE users SET {', '.join(updates)} WHERE id = :user_id::uuid AND tenant_id = :tenant_id::uuid",
             params
         )
 
@@ -573,7 +618,7 @@ def _delete_user(tenant_id: str, user_id: str) -> dict:
     """Delete a user."""
     db = get_aurora_client()
     db.execute(
-        "DELETE FROM users WHERE id = :user_id AND tenant_id = :tenant_id",
+        "DELETE FROM users WHERE id = :user_id::uuid AND tenant_id = :tenant_id::uuid",
         [param("user_id", user_id), param("tenant_id", tenant_id)]
     )
     return _json_response({"message": "User deleted"})
@@ -625,21 +670,21 @@ def _get_stats(tenant_id: str) -> dict:
 
     # Count buckets
     bucket_result = db.execute(
-        "SELECT COUNT(*) FROM tenant_buckets WHERE tenant_id = :tenant_id",
+        "SELECT COUNT(*) FROM tenant_buckets WHERE tenant_id = :tenant_id::uuid",
         [param("tenant_id", tenant_id)]
     )
     bucket_count = bucket_result["records"][0][0].get("longValue", 0)
 
     # Count uploads
     upload_result = db.execute(
-        "SELECT COUNT(*) FROM file_uploads WHERE tenant_id = :tenant_id",
+        "SELECT COUNT(*) FROM file_uploads WHERE tenant_id = :tenant_id::uuid",
         [param("tenant_id", tenant_id)]
     )
     upload_count = upload_result["records"][0][0].get("longValue", 0)
 
     # Count users
     user_result = db.execute(
-        "SELECT COUNT(*) FROM users WHERE tenant_id = :tenant_id",
+        "SELECT COUNT(*) FROM users WHERE tenant_id = :tenant_id::uuid",
         [param("tenant_id", tenant_id)]
     )
     user_count = user_result["records"][0][0].get("longValue", 0)

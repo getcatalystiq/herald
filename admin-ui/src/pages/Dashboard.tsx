@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+
+const API_BASE = import.meta.env.VITE_API_URL || '';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingCard } from '@/components/ui/loading';
 import { Cloud, FileUp, Users, Plus } from 'lucide-react';
@@ -27,7 +29,7 @@ export function Dashboard() {
       try {
         const token = await getToken();
         if (!token) return;
-        const response = await fetch('/api/admin/stats', {
+        const response = await fetch(`${API_BASE}/api/admin/stats`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (response.ok) {

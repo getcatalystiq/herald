@@ -4,7 +4,6 @@ import { useAuth } from '../auth/AuthContext';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
-import { Cloud } from 'lucide-react';
 
 interface LayoutProps {
   children: ReactNode;
@@ -26,9 +25,7 @@ export function Layout({ children }: LayoutProps) {
       <nav className="w-60 bg-gray-900 dark:bg-gray-950 text-white flex flex-col fixed top-0 left-0 bottom-0">
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-orange-500 flex items-center justify-center">
-              <Cloud className="h-6 w-6 text-white" />
-            </div>
+            <img src="/herald-logo.png" alt="Herald" className="h-10 w-10 rounded-xl" />
             <div>
               <h1 className="text-2xl font-bold">Herald</h1>
               <span className="text-xs text-gray-500 uppercase tracking-wider">Admin</span>

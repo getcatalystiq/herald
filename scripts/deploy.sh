@@ -73,9 +73,9 @@ echo ""
 echo -e "${BLUE}Deploying to AWS...${NC}"
 
 if [ "$ENVIRONMENT" = "prod" ]; then
-    sam deploy --config-env prod --no-fail-on-empty-changeset
+    sam deploy --config-env prod --no-fail-on-empty-changeset --resolve-image-repos --resolve-s3 --no-confirm-changeset
 else
-    sam deploy --no-fail-on-empty-changeset
+    sam deploy --no-fail-on-empty-changeset --resolve-image-repos --resolve-s3
 fi
 
 echo -e "${GREEN}✓ Deployment complete${NC}"

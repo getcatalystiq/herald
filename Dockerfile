@@ -7,5 +7,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY src/ ${LAMBDA_TASK_ROOT}/
 
+# Ensure files are readable
+RUN chmod -R a+r ${LAMBDA_TASK_ROOT}/
+
 # Default handler (overridden per function in template.yaml)
 CMD ["mcp.server.handler"]

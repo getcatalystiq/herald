@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { Menu, X, Cloud } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navLinks = [
@@ -37,10 +37,15 @@ export function Header() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <nav className="flex items-center justify-between h-16 lg:h-20">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-3 group">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-orange-500 flex items-center justify-center shadow-lg shadow-primary/20 group-hover:shadow-primary/30 transition-shadow">
-              <Cloud className="h-6 w-6 text-white" />
-            </div>
+          <Link to="/" className="flex items-center gap-2 group">
+            <img
+              src="/herald-logo.png"
+              alt="Herald"
+              className={cn(
+                "h-10 w-10 transition-all",
+                isScrolled ? "brightness-0 dark:brightness-100" : "brightness-100"
+              )}
+            />
             <span className={cn(
               "font-serif text-2xl font-bold transition-colors",
               isScrolled ? "text-foreground" : "text-white"

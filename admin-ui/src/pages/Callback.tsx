@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,6 +8,7 @@ export function Callback() {
   const { processCallback, isLoggedIn } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
+  const processingRef = useRef(false);
 
   useEffect(() => {
     // If already logged in, go to dashboard
@@ -25,6 +26,12 @@ export function Callback() {
       navigate('/login', { replace: true });
       return;
     }
+
+    // Prevent double execution (React 18 StrictMode)
+    if (processingRef.current) {
+      return;
+    }
+    processingRef.current = true;
 
     const handleCallback = async () => {
       try {

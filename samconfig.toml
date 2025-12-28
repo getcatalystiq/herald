@@ -27,12 +27,23 @@ disable_rollback = true
 [default.sync.parameters]
 watch = true
 
+# Staging environment
+[staging.deploy.parameters]
+stack_name = "herald-staging"
+s3_prefix = "herald-staging"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_NAMED_IAM"
+parameter_overrides = "Environment=\"staging\" MavenVpcId=\"/maven/staging/vpc-id\" MavenPrivateSubnet1=\"/maven/staging/private-subnet-1\" MavenPrivateSubnet2=\"/maven/staging/private-subnet-2\" MavenDBSubnetGroup=\"/maven/staging/db-subnet-group\" MavenLambdaSecurityGroup=\"/maven/staging/lambda-sg\" MavenBastionSecurityGroup=\"/maven/staging/bastion-sg\""
+
 # Production environment
 [prod.deploy.parameters]
 stack_name = "herald-prod"
 s3_prefix = "herald-prod"
 region = "us-east-1"
-confirm_changeset = true
+confirm_changeset = false
 capabilities = "CAPABILITY_NAMED_IAM"
-parameter_overrides = "Environment=\"prod\" AuroraMinCapacity=\"0.5\" AuroraMaxCapacity=\"8\""
+resolve_s3 = true
+resolve_image_repos = true
+parameter_overrides = "Environment=\"prod\" AuroraMinCapacity=\"0.5\" AuroraMaxCapacity=\"8\" MavenVpcId=\"/maven/prod/vpc-id\" MavenPrivateSubnet1=\"/maven/prod/private-subnet-1\" MavenPrivateSubnet2=\"/maven/prod/private-subnet-2\" MavenDBSubnetGroup=\"/maven/prod/db-subnet-group\" MavenLambdaSecurityGroup=\"/maven/prod/lambda-sg\" MavenBastionSecurityGroup=\"/maven/prod/bastion-sg\""
 disable_rollback = false

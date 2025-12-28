@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/auth/AuthContext';
+
+const API_BASE = import.meta.env.VITE_API_URL || '';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -27,7 +29,7 @@ export function Buckets() {
       try {
         const token = await getToken();
         if (!token) return;
-        const response = await fetch('/api/admin/buckets', {
+        const response = await fetch(`${API_BASE}/api/admin/buckets`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (response.ok) {

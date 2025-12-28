@@ -9,6 +9,8 @@ import json
 import logging
 from typing import Any
 
+import bcrypt
+
 from db.aurora import get_aurora_client, param
 
 logger = logging.getLogger(__name__)
@@ -111,7 +113,7 @@ def _get_tenant(tenant_id: str) -> dict:
         """
         SELECT id, name, slug, email, settings, is_active, created_at
         FROM tenants
-        WHERE id = :tenant_id
+        WHERE id = :tenant_id::uuid
         """,
         [param("tenant_id", tenant_id)]
     )
@@ -132,8 +134,6 @@ def _get_tenant(tenant_id: str) -> dict:
 
 def _create_tenant(data: dict) -> dict:
     """Create a new tenant with owner user."""
-    import hashlib
-
     name = data.get("name")
     email = data.get("email")
     password = data.get("password")
@@ -142,7 +142,7 @@ def _create_tenant(data: dict) -> dict:
 
     slug = data.get("slug", name.lower().replace(" ", "-"))
     settings = json.dumps(data.get("settings", {}))
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
     db = get_aurora_client()
 
@@ -167,7 +167,7 @@ def _create_tenant(data: dict) -> dict:
         db.execute(
             """
             INSERT INTO users (tenant_id, email, password_hash, name, role, scopes)
-            VALUES (:tenant_id, :email, :password_hash, :name, 'owner', ARRAY['read', 'write', 'admin'])
+            VALUES (:tenant_id::uuid, :email, :password_hash, :name, 'owner', ARRAY['read', 'write', 'admin'])
             """,
             [
                 param("tenant_id", tenant_id),
@@ -203,7 +203,7 @@ def _update_tenant(tenant_id: str, data: dict) -> dict:
 
     if updates:
         db.execute(
-            f"UPDATE tenants SET {', '.join(updates)} WHERE id = :tenant_id",
+            f"UPDATE tenants SET {', '.join(updates)} WHERE id = :tenant_id::uuid",
             params
         )
 
@@ -214,7 +214,7 @@ def _delete_tenant(tenant_id: str) -> dict:
     """Delete a tenant and all associated data."""
     db = get_aurora_client()
     db.execute(
-        "DELETE FROM tenants WHERE id = :tenant_id",
+        "DELETE FROM tenants WHERE id = :tenant_id::uuid",
         [param("tenant_id", tenant_id)]
     )
     return _json_response({"message": "Tenant deleted"})

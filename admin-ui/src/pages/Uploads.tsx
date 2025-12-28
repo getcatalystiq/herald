@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/auth/AuthContext';
+
+const API_BASE = import.meta.env.VITE_API_URL || '';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -34,7 +36,7 @@ export function Uploads() {
       try {
         const token = await getToken();
         if (!token) return;
-        const response = await fetch('/api/admin/uploads', {
+        const response = await fetch(`${API_BASE}/api/admin/uploads`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (response.ok) {

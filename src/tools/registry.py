@@ -27,6 +27,8 @@ Use this tool when you need to:
 - Save generated content (reports, images, documents) to S3
 - Share files via S3 URLs
 
+IMPORTANT: file_path MUST include a unique folder prefix. Generate a random folder name (6-8 alphanumeric chars) for each new site to ensure isolation.
+
 For files larger than 5MB, use get_presigned_url instead.
 
 The content can be:
@@ -43,7 +45,7 @@ If no bucket is specified, the default bucket is used.""",
                 },
                 "file_path": {
                     "type": "string",
-                    "description": "Path/key for the file in the bucket (e.g., 'reports/monthly.pdf')",
+                    "description": "Path/key - MUST include a unique folder prefix (e.g., 'site-a3x9k2/index.html', 'proj-7hf4m1/assets/logo.png')",
                 },
                 "content": {
                     "type": "string",
@@ -69,6 +71,8 @@ If no bucket is specified, the default bucket is used.""",
 
 Use this tool for files larger than 5MB. The URL can be used to upload directly to S3 without going through Herald.
 
+IMPORTANT: file_path MUST include a unique folder prefix. Use the same folder name as other files for this site.
+
 Returns a presigned URL valid for the specified duration (default: 1 hour).
 
 The user or client can then use this URL with an HTTP PUT request to upload the file directly.""",
@@ -81,7 +85,7 @@ The user or client can then use this URL with an HTTP PUT request to upload the 
                 },
                 "file_path": {
                     "type": "string",
-                    "description": "Path/key for the file in the bucket",
+                    "description": "Path/key - MUST include the site's unique folder prefix (e.g., 'site-a3x9k2/video.mp4', 'proj-7hf4m1/large-file.zip')",
                 },
                 "content_type": {
                     "type": "string",

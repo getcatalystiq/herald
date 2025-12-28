@@ -33,6 +33,7 @@ def _get_accessible_buckets(tenant_id: str, user_id: str) -> list[dict]:
             tb.is_default,
             tb.settings,
             tb.credentials_secret_arn,
+            tb.public_url_base,
             bag.permissions,
             bag.prefix_restriction
         FROM tenant_buckets tb
@@ -76,6 +77,7 @@ def _get_accessible_bucket(
                 tb.is_default,
                 tb.settings,
                 tb.credentials_secret_arn,
+                tb.public_url_base,
                 bag.permissions,
                 bag.prefix_restriction
             FROM tenant_buckets tb
@@ -105,6 +107,7 @@ def _get_accessible_bucket(
                 tb.is_default,
                 tb.settings,
                 tb.credentials_secret_arn,
+                tb.public_url_base,
                 bag.permissions,
                 bag.prefix_restriction
             FROM tenant_buckets tb
@@ -226,6 +229,19 @@ def publish_file_handler(
             is_error=True
         )
 
+    # Enforce folder structure - file_path must include at least one folder
+    # e.g., "mysite/index.html" is valid, "index.html" is not
+    path_parts = file_path.strip("/").split("/")
+    if len(path_parts) < 2:
+        return create_tool_result(
+            [text_content(
+                "Error: file_path must include a folder prefix.\n"
+                "Example: 'mysite/index.html' or 'project/assets/logo.png'\n"
+                "This ensures files are organized by site/project."
+            )],
+            is_error=True
+        )
+
     if not content:
         return create_tool_result(
             [text_content("Error: content is required")],
@@ -305,10 +321,31 @@ def publish_file_handler(
             upload_method="direct",
         )
 
+        # Build response with public URL if configured
         s3_uri = f"s3://{bucket_config['bucket_name']}/{full_key}"
-        return create_tool_result([
-            text_content(f"Successfully uploaded to {s3_uri}\n\nFile size: {len(body):,} bytes\nContent-Type: {content_type}")
-        ])
+        public_url_base = bucket_config.get("public_url_base")
+
+        if public_url_base:
+            # Construct public URL from base + file path
+            public_url = f"{public_url_base.rstrip('/')}/{full_key}"
+            return create_tool_result([
+                text_content(
+                    f"Successfully published!\n\n"
+                    f"**Public URL:** {public_url}\n\n"
+                    f"File size: {len(body):,} bytes\n"
+                    f"Content-Type: {content_type}"
+                )
+            ])
+        else:
+            return create_tool_result([
+                text_content(
+                    f"Successfully uploaded to {s3_uri}\n\n"
+                    f"File size: {len(body):,} bytes\n"
+                    f"Content-Type: {content_type}\n\n"
+                    f"Note: No public URL configured for this bucket. "
+                    f"Ask your admin to set a public_url_base in bucket settings."
+                )
+            ])
 
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code", "Unknown")
@@ -340,6 +377,18 @@ def get_presigned_url_handler(
     if not file_path:
         return create_tool_result(
             [text_content("Error: file_path is required")],
+            is_error=True
+        )
+
+    # Enforce folder structure - file_path must include at least one folder
+    path_parts = file_path.strip("/").split("/")
+    if len(path_parts) < 2:
+        return create_tool_result(
+            [text_content(
+                "Error: file_path must include a folder prefix.\n"
+                "Example: 'mysite/index.html' or 'project/assets/logo.png'\n"
+                "This ensures files are organized by site/project."
+            )],
             is_error=True
         )
 

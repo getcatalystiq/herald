@@ -122,6 +122,19 @@ SERVER_INSTRUCTIONS = """You are connected to Herald, an S3 file publishing serv
 4. **Browse files** (list_files) - List files in a bucket with optional prefix filter
 5. **Delete files** (delete_file) - Remove files from a bucket
 
+## File Path Requirements
+
+**IMPORTANT:** All file paths MUST include a unique folder prefix to organize files by site/project. Generate a random folder name (6-8 alphanumeric characters) for each new site to ensure isolation.
+
+✅ Valid paths:
+- `site-a3x9k2/index.html`
+- `proj-7hf4m1/assets/logo.png`
+- `web-q8n2p5/styles/main.css`
+
+❌ Invalid paths:
+- `index.html` (missing folder)
+- `logo.png` (missing folder)
+
 ## Workflow
 
 1. Call list_buckets to see available destinations
@@ -131,6 +144,7 @@ SERVER_INSTRUCTIONS = """You are connected to Herald, an S3 file publishing serv
 
 ## Best Practices
 
+- Always use a folder prefix that identifies the site/project (e.g., `mysite/`)
 - Check bucket access before attempting uploads
 - Use appropriate content types for files
 - For binary files, base64-encode the content

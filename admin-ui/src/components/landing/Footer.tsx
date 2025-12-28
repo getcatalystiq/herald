@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { Cloud } from 'lucide-react';
 
 const footerLinks = {
   product: [
@@ -76,10 +75,12 @@ export function Footer() {
         <div className="py-16 grid grid-cols-2 md:grid-cols-5 gap-8 lg:gap-12">
           {/* Brand column */}
           <div className="col-span-2 md:col-span-1">
-            <Link to="/" className="flex items-center gap-3 mb-4">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-orange-500 flex items-center justify-center shadow-lg shadow-primary/20">
-                <Cloud className="h-6 w-6 text-white" />
-              </div>
+            <Link to="/" className="flex items-center gap-2 mb-4">
+              <img
+                src="/herald-logo.png"
+                alt="Herald"
+                className="h-10 w-10"
+              />
               <span className="font-serif text-2xl font-bold text-white">
                 Herald
               </span>

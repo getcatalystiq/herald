@@ -63,6 +63,15 @@ export default function App() {
       />
 
       <Route
+        path="/buckets/:id/settings"
+        element={
+          <ProtectedRoute>
+            <BucketDetail />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/users"
         element={
           <ProtectedRoute>
