@@ -83,14 +83,14 @@ export function Hero() {
 
             {/* Headline */}
             <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-[1.1] tracking-tight mb-6 animate-fade-in-up">
-              Publish files to S3,{' '}
-              <span className="text-primary">with AI agents.</span>
+              Website publishing{' '}
+              <span className="text-primary">for AI agents.</span>
             </h1>
 
             {/* Subheadline */}
             <p className="text-lg sm:text-xl text-gray-400 max-w-xl mx-auto lg:mx-0 mb-10 leading-relaxed animate-fade-in-up animation-delay-100">
-              Herald is a hosted MCP server that enables AI agents to publish files
-              directly to your S3 buckets. Configure access, grant permissions, and start publishing.
+              Herald enables AI agents to publish websites directly to the web.
+              Configure access, grant permissions, and start publishing.
             </p>
 
             {/* CTAs */}

@@ -86,8 +86,8 @@ export function Footer() {
               </span>
             </Link>
             <p className="text-sm text-gray-400 leading-relaxed max-w-xs">
-              Publish files to S3 with AI agents. Connect your bucket
-              and start publishing with Claude, OpenAI, or any MCP client.
+              Website publishing for AI agents. Start publishing websites
+              with Claude, OpenAI, or any MCP client.
             </p>
           </div>
 
