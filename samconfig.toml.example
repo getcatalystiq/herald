@@ -1,0 +1,63 @@
+# Herald SAM CLI Configuration
+# Copy this file to samconfig.toml and update the values for your environment
+# https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-config.html
+
+version = 0.1
+
+[default.global.parameters]
+stack_name = "herald-dev"
+
+[default.build.parameters]
+cached = true
+parallel = true
+use_container = false
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+stack_name = "herald-dev"
+s3_prefix = "herald-dev"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_NAMED_IAM"
+image_repositories = []
+parameter_overrides = "Environment=\"dev\""
+
+# VPC Configuration - Update these SSM parameter paths for your infrastructure
+# These parameters should point to your existing VPC resources:
+# - VpcVpcId: VPC where Lambda and Aurora will be deployed
+# - VpcPrivateSubnet1/2: Private subnets for Lambda and Aurora
+# - VpcDBSubnetGroup: RDS subnet group for Aurora
+# - VpcLambdaSecurityGroup: Security group for Lambda functions
+# - VpcBastionSecurityGroup: Security group for bastion host (for DB access)
+#
+# Example with SSM parameters:
+# parameter_overrides = "Environment=\"dev\" VpcVpcId=\"/shared/dev/vpc-id\" VpcPrivateSubnet1=\"/shared/dev/private-subnet-1\" VpcPrivateSubnet2=\"/shared/dev/private-subnet-2\" VpcDBSubnetGroup=\"/shared/dev/db-subnet-group\" VpcLambdaSecurityGroup=\"/shared/dev/lambda-sg\" VpcBastionSecurityGroup=\"/shared/dev/bastion-sg\""
+
+[default.sync.parameters]
+watch = true
+
+# Staging environment
+[staging.deploy.parameters]
+stack_name = "herald-staging"
+s3_prefix = "herald-staging"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_NAMED_IAM"
+# Update parameter_overrides with your staging VPC SSM parameter paths
+parameter_overrides = "Environment=\"staging\""
+
+# Production environment
+[prod.deploy.parameters]
+stack_name = "herald-prod"
+s3_prefix = "herald-prod"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_NAMED_IAM"
+resolve_s3 = true
+resolve_image_repos = true
+# Update parameter_overrides with your production VPC SSM parameter paths
+# Consider increasing AuroraMaxCapacity for production workloads
+parameter_overrides = "Environment=\"prod\" AuroraMinCapacity=\"0.5\" AuroraMaxCapacity=\"8\""
+disable_rollback = false
