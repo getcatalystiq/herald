@@ -4,20 +4,11 @@ const footerLinks = {
   product: [
     { label: 'Features', href: '#features' },
     { label: 'How It Works', href: '#how-it-works' },
-    { label: 'Changelog', href: '#' },
   ],
   resources: [
     { label: 'Documentation', href: 'https://github.com/getcatalystiq/herald#readme', external: true },
     { label: 'API Reference', href: 'https://github.com/getcatalystiq/herald#api-endpoints', external: true },
     { label: 'GitHub', href: 'https://github.com/getcatalystiq/herald', external: true },
-  ],
-  company: [
-    { label: 'About', href: '#' },
-    { label: 'Contact', href: '#' },
-  ],
-  legal: [
-    { label: 'Privacy', href: '#' },
-    { label: 'Terms', href: '#' },
   ],
 };
 
@@ -72,9 +63,9 @@ export function Footer() {
     <footer className="bg-gray-950 border-t border-white/10">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Main footer content */}
-        <div className="py-16 grid grid-cols-2 md:grid-cols-5 gap-8 lg:gap-12">
+        <div className="py-16 grid grid-cols-2 md:grid-cols-4 gap-8 lg:gap-12">
           {/* Brand column */}
-          <div className="col-span-2 md:col-span-1">
+          <div className="col-span-2 md:col-span-2">
             <Link to="/" className="flex items-center gap-2 mb-4">
               <img
                 src="/herald-logo.png"
@@ -94,8 +85,6 @@ export function Footer() {
           {/* Link columns */}
           <FooterLinkGroup title="Product" links={footerLinks.product} />
           <FooterLinkGroup title="Resources" links={footerLinks.resources} />
-          <FooterLinkGroup title="Company" links={footerLinks.company} />
-          <FooterLinkGroup title="Legal" links={footerLinks.legal} />
         </div>
 
         {/* Bottom bar */}
