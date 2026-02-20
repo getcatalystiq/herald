@@ -104,7 +104,7 @@ export default function BucketDetailPage({
 
       if (response.ok) {
         const data = await response.json();
-        router.push(`/buckets/${data.id}`);
+        router.push(`/buckets/${data.bucket.id}`);
       } else {
         const error = await response.json();
         alert(error.error || "Failed to create bucket");
