@@ -9,12 +9,19 @@ export function getDb(): NeonQueryFunction<false, false> {
   return _sql;
 }
 
-// Convenience export — use sql`...` template literals
-export const sql = new Proxy({} as NeonQueryFunction<false, false>, {
-  apply(_target, _thisArg, args) {
-    return getDb().apply(null, args as Parameters<NeonQueryFunction<false, false>>);
-  },
-  get(_target, prop) {
-    return Reflect.get(getDb(), prop);
-  },
-});
+// Lazy-initialized tagged template — use sql`...`
+// Using a function target so the Proxy's apply trap works
+export const sql: NeonQueryFunction<false, false> = new Proxy(
+  Object.assign(function () {} as unknown as NeonQueryFunction<false, false>),
+  {
+    apply(_target, _thisArg, args) {
+      return getDb().apply(
+        null,
+        args as Parameters<NeonQueryFunction<false, false>>
+      );
+    },
+    get(_target, prop) {
+      return Reflect.get(getDb(), prop);
+    },
+  }
+);
