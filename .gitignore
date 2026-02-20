@@ -1,37 +1,13 @@
-# SAM build artifacts
-.aws-sam/
-samconfig.toml
-samconfig.toml.bak
+# Dependencies
+node_modules/
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
+# Next.js
+.next/
+out/
+
+# Build
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-# Python lib folders (but not admin-ui/src/lib)
-/lib/
-lib64/
-!admin-ui/src/lib/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
-.venv/
-venv/
-ENV/
-env/
 
 # IDE
 .idea/
@@ -47,20 +23,31 @@ Thumbs.db
 # Logs
 *.log
 logs/
+npm-debug.log*
 
 # Local development
 .env
 .env.local
 .env.*.local
 
-# Test coverage
-.coverage
-htmlcov/
-.pytest_cache/
+# TypeScript
+*.tsbuildinfo
 
 # Temporary files
 tmp/
 temp/
 *.tmp
+
+# Legacy (to be removed)
+.aws-sam/
+samconfig.toml
+samconfig.toml.bak
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.coverage
+htmlcov/
+.pytest_cache/
 
 .playwright-mcp
