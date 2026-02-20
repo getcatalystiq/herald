@@ -8,7 +8,10 @@ import { sql } from "@/lib/db";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "";
 const jwtSecret = new TextEncoder().encode(JWT_SECRET);
-const ISSUER = process.env.NEXT_PUBLIC_URL ?? "http://localhost:3000";
+const ISSUER = process.env.NEXT_PUBLIC_URL
+  ?? (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : "http://localhost:3000");
 
 const ALLOWED_DCR_DOMAINS = (
   process.env.ALLOWED_DCR_DOMAINS ?? "claude.ai,localhost,127.0.0.1"
