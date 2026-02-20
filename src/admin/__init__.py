@@ -1,1 +1,0 @@
-"""Herald Admin API handlers."""
