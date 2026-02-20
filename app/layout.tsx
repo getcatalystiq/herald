@@ -5,6 +5,9 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Herald - Website Publishing for AI Agents',
   description: 'Publish websites and files with AI agents via MCP.',
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({
