@@ -12,7 +12,6 @@ async function migrate() {
   const sql = neon(databaseUrl);
   const migrationsDir = join(import.meta.dirname, "..", "migrations");
 
-  // Only run Neon migrations (001_neon_schema.sql)
   const files = readdirSync(migrationsDir)
     .filter((f) => f.endsWith(".sql") && f.includes("neon"))
     .sort();
@@ -25,7 +24,8 @@ async function migrate() {
   for (const file of files) {
     console.log(`Running migration: ${file}`);
     const sqlContent = readFileSync(join(migrationsDir, file), "utf-8");
-    await sql(sqlContent);
+    // Use tagged template with raw SQL content
+    await sql([sqlContent] as unknown as TemplateStringsArray);
     console.log(`Completed: ${file}`);
   }
 
