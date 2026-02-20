@@ -57,6 +57,7 @@ export default function BucketDetailPage({
 
   const [formData, setFormData] = useState({
     name: "",
+    bucket_name: "",
     is_default: false,
   });
 
@@ -213,11 +214,29 @@ export default function BucketDetailPage({
                   id="name"
                   placeholder="My Bucket"
                   value={formData.name}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+                    setFormData({ ...formData, name, bucket_name: slug });
+                  }}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="bucket_name">Storage Path</Label>
+                <Input
+                  id="bucket_name"
+                  placeholder="my-bucket"
+                  value={formData.bucket_name}
                   onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
+                    setFormData({ ...formData, bucket_name: e.target.value })
                   }
                   required
                 />
+                <p className="text-xs text-muted-foreground">
+                  Path prefix used for file storage in Vercel Blob.
+                </p>
               </div>
 
               <div className="flex items-center space-x-2">
