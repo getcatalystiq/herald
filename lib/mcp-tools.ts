@@ -202,9 +202,12 @@ export function registerTools(server: McpServer) {
         VALUES (${tenantId}::uuid, ${bucket.id}::uuid, ${userId}::uuid, ${fullPath}, ${parts[parts.length - 1]}, ${fileSize}, ${content_type ?? "application/octet-stream"}, 'direct')
       `;
 
-      const publicUrl = bucket.public_url_base
-        ? `${bucket.public_url_base}/${fullPath}`
-        : result.url;
+      // Build proxy URL so files render inline (Vercel Blob forces download)
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000";
+      const blobPath = `${bucket.bucket_name}/${fullPath}`;
+      const publicUrl = `${baseUrl}/sites/${blobPath}`;
 
       return {
         content: [
