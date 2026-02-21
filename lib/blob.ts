@@ -20,6 +20,7 @@ export async function uploadFile(
     access: "public",
     addRandomSuffix: false,
     contentType,
+    cacheControlMaxAge: 31536000,
   });
 }
 

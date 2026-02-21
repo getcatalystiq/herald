@@ -28,7 +28,7 @@ npm-debug.log*
 # Local development
 .env
 .env.local
-.env.*.local
+.env*.local
 
 # TypeScript
 *.tsbuildinfo
@@ -38,18 +38,8 @@ tmp/
 temp/
 *.tmp
 
-# Legacy (to be removed)
-.aws-sam/
-samconfig.toml
-samconfig.toml.bak
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-.coverage
-htmlcov/
-.pytest_cache/
-
-.playwright-mcp
+# Vercel
 .vercel
-.env*.local
+
+# Playwright
+.playwright-mcp

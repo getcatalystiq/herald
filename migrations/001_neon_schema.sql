@@ -1,6 +1,4 @@
 -- Herald Database Schema (Neon PostgreSQL)
--- Adapted from Aurora schema: gen_random_uuid(), no uuid-ossp,
--- dropped mcp_sessions, dropped settings, simplified tenant_buckets
 
 -------------------------------------------------------------------------------
 -- TENANTS (Organizations)

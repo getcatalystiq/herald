@@ -30,14 +30,6 @@ We take security seriously. If you discover a security vulnerability, please rep
 
 When deploying Herald, follow these security practices:
 
-### AWS Configuration
-
-- Use least-privilege IAM roles
-- Enable CloudTrail logging
-- Use AWS Secrets Manager for all credentials
-- Enable encryption at rest for Aurora and S3
-- Configure VPC security groups restrictively
-
 ### OAuth Security
 
 - Use PKCE for all authorization flows
@@ -50,21 +42,9 @@ When deploying Herald, follow these security practices:
 - Never expose the database publicly
 - Use SSL/TLS for all database connections
 - Regularly rotate database credentials
-- Enable audit logging
 
-### Network Security
+### Deployment Security
 
-- Deploy in private subnets
-- Use VPC endpoints where possible
-- Configure WAF rules for API Gateway
-- Enable DDoS protection
-
-## Known Security Considerations
-
-### db-tunnel.sh Script
-
-The database tunnel script displays the Aurora admin password in the terminal output. This is intentional for development convenience but:
-
-- Only use this script in secure development environments
-- Clear terminal history after use
-- Never run this script in shared or logged environments
+- Set strong JWT_SECRET (min 32 characters)
+- Configure ALLOWED_DCR_DOMAINS to restrict auto-registration
+- Use Vercel environment variables for all secrets
