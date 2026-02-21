@@ -144,6 +144,13 @@ npx vercel --prod
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/mcp` | GET/POST/DELETE | MCP Streamable HTTP transport |
+| `/mcp` | GET/POST/DELETE | Root-level MCP endpoint (Claude Desktop) |
+
+### File Serving
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/sites/{tenant-slug}/{path}` | GET | Serve published files inline |
 
 ### Admin API
 
@@ -190,6 +197,8 @@ herald/
 │   │   ├── admin/        # Admin API
 │   │   └── cron/         # Cleanup cron
 │   ├── .well-known/      # OAuth metadata
+│   ├── mcp/              # Root-level MCP endpoint
+│   ├── sites/[...path]/  # File serving proxy
 │   ├── login/            # Login page
 │   └── callback/         # OAuth callback
 ├── components/
