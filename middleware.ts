@@ -6,8 +6,12 @@ export function middleware(request: NextRequest) {
 
   // Security headers
   response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+
+  // Allow OAuth authorize page to be framed (for Claude.ai OAuth popup)
+  if (!request.nextUrl.pathname.startsWith("/api/oauth/authorize")) {
+    response.headers.set("X-Frame-Options", "DENY");
+  }
 
   // CORS for API routes
   if (request.nextUrl.pathname.startsWith("/api/") ||
