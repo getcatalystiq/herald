@@ -1,5 +1,6 @@
 import { requireAdmin, isErrorResponse } from "@/lib/admin-auth";
 import { sql } from "@/lib/db";
+import { jsonResponse } from "@/lib/oauth";
 
 export async function GET(
   request: Request,
@@ -15,10 +16,10 @@ export async function GET(
   `;
 
   if (rows.length === 0) {
-    return Response.json({ error: "Bucket not found" }, { status: 404 });
+    return jsonResponse({ error: "Bucket not found" }, 404);
   }
 
-  return Response.json({ bucket: rows[0] });
+  return jsonResponse({ bucket: rows[0] });
 }
 
 export async function PUT(
@@ -47,10 +48,10 @@ export async function PUT(
   `;
 
   if (rows.length === 0) {
-    return Response.json({ error: "Bucket not found" }, { status: 404 });
+    return jsonResponse({ error: "Bucket not found" }, 404);
   }
 
-  return Response.json({ bucket: rows[0] });
+  return jsonResponse({ bucket: rows[0] });
 }
 
 export async function DELETE(
@@ -68,7 +69,7 @@ export async function DELETE(
   `;
 
   if (rows.length === 0) {
-    return Response.json({ error: "Bucket not found" }, { status: 404 });
+    return jsonResponse({ error: "Bucket not found" }, 404);
   }
 
   return new Response(null, { status: 204 });

@@ -1,4 +1,4 @@
-import { signup, oauthError } from "@/lib/oauth";
+import { signup, oauthError, jsonResponse } from "@/lib/oauth";
 
 export async function POST(request: Request) {
   let body: Record<string, string>;
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await signup(tenant_name, email, password, name);
-    return Response.json(result, { status: 201 });
+    return jsonResponse(result, 201);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Signup failed";
     if (message.includes("duplicate") || message.includes("unique")) {

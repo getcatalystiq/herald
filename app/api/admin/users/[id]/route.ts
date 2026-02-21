@@ -1,6 +1,6 @@
 import { requireAdmin, isErrorResponse } from "@/lib/admin-auth";
 import { sql } from "@/lib/db";
-import { hashPassword } from "@/lib/oauth";
+import { hashPassword, jsonResponse } from "@/lib/oauth";
 
 export async function PUT(
   request: Request,
@@ -16,9 +16,9 @@ export async function PUT(
   let passwordHash: string | null = null;
   if (password) {
     if (password.length < 8) {
-      return Response.json(
+      return jsonResponse(
         { error: "Password must be at least 8 characters" },
-        { status: 400 }
+        400
       );
     }
     passwordHash = await hashPassword(password);
@@ -37,10 +37,10 @@ export async function PUT(
   `;
 
   if (rows.length === 0) {
-    return Response.json({ error: "User not found" }, { status: 404 });
+    return jsonResponse({ error: "User not found" }, 404);
   }
 
-  return Response.json({ user: rows[0] });
+  return jsonResponse({ user: rows[0] });
 }
 
 export async function DELETE(
@@ -52,9 +52,9 @@ export async function DELETE(
   const { id } = await params;
 
   if (id === auth.userId) {
-    return Response.json(
+    return jsonResponse(
       { error: "Cannot delete yourself" },
-      { status: 400 }
+      400
     );
   }
 
@@ -65,7 +65,7 @@ export async function DELETE(
   `;
 
   if (rows.length === 0) {
-    return Response.json({ error: "User not found" }, { status: 404 });
+    return jsonResponse({ error: "User not found" }, 404);
   }
 
   return new Response(null, { status: 204 });

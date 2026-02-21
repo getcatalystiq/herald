@@ -1,5 +1,6 @@
 import { requireAdmin, isErrorResponse } from "@/lib/admin-auth";
 import { sql } from "@/lib/db";
+import { jsonResponse } from "@/lib/oauth";
 
 export async function GET(request: Request) {
   const auth = await requireAdmin(request);
@@ -18,5 +19,5 @@ export async function GET(request: Request) {
     LIMIT 100
   `;
 
-  return Response.json({ uploads: rows });
+  return jsonResponse({ uploads: rows });
 }

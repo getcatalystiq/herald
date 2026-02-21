@@ -1,5 +1,6 @@
 import { requireAdmin, isErrorResponse } from "@/lib/admin-auth";
 import { sql } from "@/lib/db";
+import { jsonResponse } from "@/lib/oauth";
 
 export async function GET(request: Request) {
   const auth = await requireAdmin(request);
@@ -12,7 +13,7 @@ export async function GET(request: Request) {
     ORDER BY created_at DESC
   `;
 
-  return Response.json({ buckets: rows });
+  return jsonResponse({ buckets: rows });
 }
 
 export async function POST(request: Request) {
@@ -23,9 +24,9 @@ export async function POST(request: Request) {
   const { name, bucket_name, prefix, public_url_base, is_default, settings } = body;
 
   if (!name || !bucket_name) {
-    return Response.json(
+    return jsonResponse(
       { error: "name and bucket_name are required" },
-      { status: 400 }
+      400
     );
   }
 
@@ -42,5 +43,5 @@ export async function POST(request: Request) {
     VALUES (${auth.tenantId}::uuid, ${bucket.id}::uuid, ${auth.userId}::uuid, ARRAY['read', 'write', 'delete'], ${auth.userId}::uuid)
   `;
 
-  return Response.json({ bucket }, { status: 201 });
+  return jsonResponse({ bucket }, 201);
 }

@@ -1,5 +1,6 @@
 import { requireAdmin, isErrorResponse } from "@/lib/admin-auth";
 import { sql } from "@/lib/db";
+import { jsonResponse } from "@/lib/oauth";
 
 export async function DELETE(
   request: Request,
@@ -16,7 +17,7 @@ export async function DELETE(
   `;
 
   if (rows.length === 0) {
-    return Response.json({ error: "Grant not found" }, { status: 404 });
+    return jsonResponse({ error: "Grant not found" }, 404);
   }
 
   return new Response(null, { status: 204 });

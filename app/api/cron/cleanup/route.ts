@@ -1,4 +1,5 @@
 import { sql } from "@/lib/db";
+import { jsonResponse } from "@/lib/oauth";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -18,5 +19,5 @@ export async function GET(request: Request) {
   // Delete used authorization codes older than 1 hour
   await sql`DELETE FROM oauth_authorization_codes WHERE used_at IS NOT NULL AND used_at < NOW() - INTERVAL '1 hour'`;
 
-  return Response.json({ ok: true });
+  return jsonResponse({ ok: true });
 }

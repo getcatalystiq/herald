@@ -2,6 +2,7 @@ import {
   authenticateUser,
   createAccessToken,
   createRefreshToken,
+  jsonResponse,
   oauthError,
 } from "@/lib/oauth";
 import { sql } from "@/lib/db";
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
     VALUES (${refresh.hash}, 'herald-admin', ${user.id}::uuid, ${(user.scopes as string[]).join(" ")}, ${expiresAt.toISOString()})
   `;
 
-  return Response.json({
+  return jsonResponse({
     access_token: accessToken,
     token_type: "Bearer",
     expires_in: 3600,

@@ -1,6 +1,6 @@
 import { requireAdmin, isErrorResponse } from "@/lib/admin-auth";
 import { sql } from "@/lib/db";
-import { hashPassword } from "@/lib/oauth";
+import { hashPassword, jsonResponse } from "@/lib/oauth";
 
 export async function GET(request: Request) {
   const auth = await requireAdmin(request);
@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     ORDER BY created_at DESC
   `;
 
-  return Response.json({ users: rows });
+  return jsonResponse({ users: rows });
 }
 
 export async function POST(request: Request) {
@@ -24,16 +24,16 @@ export async function POST(request: Request) {
   const { email, password, name, role, scopes } = body;
 
   if (!email || !password) {
-    return Response.json(
+    return jsonResponse(
       { error: "email and password are required" },
-      { status: 400 }
+      400
     );
   }
 
   if (password.length < 8) {
-    return Response.json(
+    return jsonResponse(
       { error: "Password must be at least 8 characters" },
-      { status: 400 }
+      400
     );
   }
 
@@ -46,13 +46,13 @@ export async function POST(request: Request) {
       RETURNING id, email, name, role, scopes, is_active, created_at
     `;
 
-    return Response.json({ user: rows[0] }, { status: 201 });
+    return jsonResponse({ user: rows[0] }, 201);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Create failed";
     if (message.includes("duplicate") || message.includes("unique")) {
-      return Response.json(
+      return jsonResponse(
         { error: "User with this email already exists" },
-        { status: 409 }
+        409
       );
     }
     throw err;

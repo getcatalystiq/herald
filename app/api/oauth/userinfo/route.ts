@@ -1,12 +1,12 @@
-import { extractBearerToken, verifyAccessToken } from "@/lib/oauth";
+import { extractBearerToken, verifyAccessToken, jsonResponse } from "@/lib/oauth";
 import { sql } from "@/lib/db";
 
 export async function GET(request: Request) {
   const token = extractBearerToken(request);
   if (!token) {
-    return Response.json(
+    return jsonResponse(
       { error: "invalid_token", error_description: "Bearer token required" },
-      { status: 401 }
+      401
     );
   }
 
@@ -14,9 +14,9 @@ export async function GET(request: Request) {
   try {
     payload = await verifyAccessToken(token);
   } catch {
-    return Response.json(
+    return jsonResponse(
       { error: "invalid_token", error_description: "Invalid or expired token" },
-      { status: 401 }
+      401
     );
   }
 
@@ -28,14 +28,14 @@ export async function GET(request: Request) {
   `;
 
   if (rows.length === 0) {
-    return Response.json(
+    return jsonResponse(
       { error: "invalid_token", error_description: "User not found" },
-      { status: 401 }
+      401
     );
   }
 
   const user = rows[0];
-  return Response.json({
+  return jsonResponse({
     sub: user.id,
     email: user.email,
     name: user.name,

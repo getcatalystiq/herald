@@ -1,5 +1,6 @@
 import { requireAdmin, isErrorResponse } from "@/lib/admin-auth";
 import { sql } from "@/lib/db";
+import { jsonResponse } from "@/lib/oauth";
 
 export async function GET(request: Request) {
   const auth = await requireAdmin(request);
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
   `;
 
   const stats = statsRows[0];
-  return Response.json({
+  return jsonResponse({
     bucketCount: Number(stats.bucket_count),
     uploadCount: Number(stats.upload_count),
     userCount: Number(stats.user_count),

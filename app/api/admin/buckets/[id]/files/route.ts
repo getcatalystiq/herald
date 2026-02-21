@@ -1,6 +1,7 @@
 import { requireAdmin, isErrorResponse } from "@/lib/admin-auth";
 import { sql } from "@/lib/db";
 import { listFiles } from "@/lib/blob";
+import { jsonResponse } from "@/lib/oauth";
 
 export async function GET(
   request: Request,
@@ -19,7 +20,7 @@ export async function GET(
   `;
 
   if (rows.length === 0) {
-    return Response.json({ error: "Bucket not found" }, { status: 404 });
+    return jsonResponse({ error: "Bucket not found" }, 404);
   }
 
   const bucket = rows[0];
@@ -35,5 +36,5 @@ export async function GET(
     100
   );
 
-  return Response.json({ files });
+  return jsonResponse({ files });
 }

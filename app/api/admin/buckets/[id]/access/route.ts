@@ -1,5 +1,6 @@
 import { requireAdmin, isErrorResponse } from "@/lib/admin-auth";
 import { sql } from "@/lib/db";
+import { jsonResponse } from "@/lib/oauth";
 
 export async function GET(
   request: Request,
@@ -17,7 +18,7 @@ export async function GET(
     ORDER BY bag.created_at DESC
   `;
 
-  return Response.json({ grants: rows });
+  return jsonResponse({ grants: rows });
 }
 
 export async function POST(
@@ -32,7 +33,7 @@ export async function POST(
   const { user_id, permissions, prefix_restriction, expires_at } = body;
 
   if (!user_id) {
-    return Response.json({ error: "user_id is required" }, { status: 400 });
+    return jsonResponse({ error: "user_id is required" }, 400);
   }
 
   const rows = await sql`
@@ -43,5 +44,5 @@ export async function POST(
     RETURNING *
   `;
 
-  return Response.json({ grant: rows[0] }, { status: 201 });
+  return jsonResponse({ grant: rows[0] }, 201);
 }

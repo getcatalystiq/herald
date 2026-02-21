@@ -1,4 +1,4 @@
-import { registerClient, oauthError } from "@/lib/oauth";
+import { registerClient, oauthError, jsonResponse } from "@/lib/oauth";
 
 export async function POST(request: Request) {
   let body: Record<string, unknown>;
@@ -48,5 +48,5 @@ export async function POST(request: Request) {
     scope: body.scope as string | undefined,
   });
 
-  return Response.json(result, { status: 201 });
+  return jsonResponse(result, 201);
 }

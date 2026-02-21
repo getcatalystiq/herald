@@ -446,7 +446,17 @@ export function oauthError(
   description: string,
   status: number = 400
 ): Response {
-  return Response.json({ error, error_description: description }, { status });
+  return new Response(
+    JSON.stringify({ error, error_description: description }),
+    { status, headers: { "Content-Type": "application/json" } }
+  );
+}
+
+export function jsonResponse(data: unknown, status: number = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 export { ISSUER, ALLOWED_DCR_DOMAINS };

@@ -5,6 +5,7 @@ import {
   getClient,
   verifyClientSecret,
   oauthError,
+  jsonResponse,
 } from "@/lib/oauth";
 
 export async function POST(request: Request) {
@@ -84,7 +85,7 @@ async function handleAuthorizationCodeGrant(
     return oauthError("invalid_grant", "Invalid or expired authorization code");
   }
 
-  return Response.json({
+  return jsonResponse({
     access_token: result.accessToken,
     token_type: "Bearer",
     expires_in: result.expiresIn,
@@ -107,7 +108,7 @@ async function handleRefreshTokenGrant(
     return oauthError("invalid_grant", "Invalid or expired refresh token");
   }
 
-  return Response.json({
+  return jsonResponse({
     access_token: result.accessToken,
     token_type: "Bearer",
     expires_in: result.expiresIn,
