@@ -7,12 +7,11 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Cloud, FolderOpen, Settings } from "lucide-react";
+import { Plus, Cloud, FolderOpen } from "lucide-react";
 
 interface Bucket {
   id: string;

@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { sql } from "@/lib/db";
-import { uploadFile, listFiles, deleteFile, tenantPath } from "@/lib/blob";
+import { uploadFile, listFiles, deleteFile } from "@/lib/blob";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Extra = RequestHandlerExtra<any, any>;
@@ -189,7 +189,7 @@ export function registerTools(server: McpServer) {
         };
       }
 
-      const result = await uploadFile(
+      await uploadFile(
         bucket.bucket_name as string,
         fullPath,
         fileContent,

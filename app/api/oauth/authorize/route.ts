@@ -75,53 +75,64 @@ export async function GET(request: NextRequest) {
 
 // POST: Process login form submission
 export async function POST(request: Request) {
-  const formData = await request.formData();
-  const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
-  const clientId = formData.get("client_id") as string;
-  const redirectUri = formData.get("redirect_uri") as string;
-  const scope = formData.get("scope") as string;
-  const state = formData.get("state") as string;
-  const codeChallenge = formData.get("code_challenge") as string;
-  const codeChallengeMethod = formData.get("code_challenge_method") as string;
+  try {
+    const formData = await request.formData();
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
+    const clientId = formData.get("client_id") as string;
+    const redirectUri = formData.get("redirect_uri") as string;
+    const scope = formData.get("scope") as string;
+    const state = formData.get("state") as string;
+    const codeChallenge = formData.get("code_challenge") as string;
+    const codeChallengeMethod = formData.get("code_challenge_method") as string;
 
-  if (!email || !password) {
-    return oauthError("invalid_request", "Email and password are required");
-  }
+    if (!email || !password) {
+      return oauthError("invalid_request", "Email and password are required");
+    }
 
-  const user = await authenticateUser(email, password);
-  if (!user) {
-    // Re-render form with error
-    const html = renderLoginForm({
+    const user = await authenticateUser(email, password);
+    if (!user) {
+      // Re-render form with error
+      const html = renderLoginForm({
+        clientId,
+        redirectUri,
+        scope,
+        state,
+        codeChallenge,
+        codeChallengeMethod,
+        clientName: clientId,
+        error: "Invalid email or password",
+      });
+      return new Response(html, {
+        status: 401,
+        headers: { "Content-Type": "text/html" },
+      });
+    }
+
+    const code = await createAuthorizationCode({
       clientId,
+      userId: user.id as string,
       redirectUri,
       scope,
-      state,
       codeChallenge,
       codeChallengeMethod,
-      clientName: clientId,
-      error: "Invalid email or password",
     });
-    return new Response(html, {
-      status: 401,
-      headers: { "Content-Type": "text/html" },
+
+    const url = new URL(redirectUri);
+    url.searchParams.set("code", code);
+    if (state) url.searchParams.set("state", state);
+
+    return new Response(null, {
+      status: 302,
+      headers: { Location: url.toString() },
     });
+  } catch (error) {
+    console.error("OAuth authorize POST error:", error);
+    return oauthError(
+      "server_error",
+      "An internal error occurred during authorization"
+    );
   }
-
-  const code = await createAuthorizationCode({
-    clientId,
-    userId: user.id as string,
-    redirectUri,
-    scope,
-    codeChallenge,
-    codeChallengeMethod,
-  });
-
-  const url = new URL(redirectUri);
-  url.searchParams.set("code", code);
-  if (state) url.searchParams.set("state", state);
-
-  return Response.redirect(url.toString(), 302);
 }
 
 function renderLoginForm(opts: {

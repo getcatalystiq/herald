@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
@@ -43,9 +44,11 @@ export function Header() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <nav className="flex items-center justify-between h-16 lg:h-20">
           <Link href="/" className="flex items-center gap-2 group">
-            <img
+            <Image
               src="/herald-logo.png"
               alt="Herald"
+              width={40}
+              height={40}
               className={cn(
                 "h-10 w-10 transition-all",
                 isScrolled

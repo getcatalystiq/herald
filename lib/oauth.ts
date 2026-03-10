@@ -126,7 +126,7 @@ export async function authenticateUser(
 
   await sql`UPDATE users SET last_login_at = NOW() WHERE id = ${user.id}::uuid`;
 
-  const { password_hash: _, ...userWithoutPassword } = user;
+  const { password_hash: _hash, ...userWithoutPassword } = user;
   return userWithoutPassword;
 }
 

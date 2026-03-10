@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
@@ -25,9 +26,11 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       <nav className="w-60 bg-gray-900 dark:bg-gray-950 text-white flex flex-col fixed top-0 left-0 bottom-0">
         <div className="p-6 border-b border-white/10">
           <Link href="/" className="flex items-center gap-3">
-            <img
+            <Image
               src="/herald-logo.png"
               alt="Herald"
+              width={40}
+              height={40}
               className="h-10 w-10 rounded-xl"
             />
             <div>

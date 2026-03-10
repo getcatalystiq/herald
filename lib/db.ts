@@ -15,9 +15,8 @@ export const sql: NeonQueryFunction<false, false> = new Proxy(
   Object.assign(function () {} as unknown as NeonQueryFunction<false, false>),
   {
     apply(_target, _thisArg, args) {
-      return getDb().apply(
-        null,
-        args as Parameters<NeonQueryFunction<false, false>>
+      return getDb()(
+        ...(args as Parameters<NeonQueryFunction<false, false>>)
       );
     },
     get(_target, prop) {
